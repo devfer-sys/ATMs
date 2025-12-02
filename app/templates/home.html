@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscador de Cajeros – UPEA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <!-- Leaflet Routing Machine -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+</head>
+<body>
+
+<div class="container py-4">
+    
+
+    <!-- Header logos -->
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap">
+        <img src="{{ url_for('static', filename='upea.png') }}" alt="Logo Izquierdo" width="80" height="80">
+        <img src="{{ url_for('static', filename='escudo.png') }}" alt="Logo Derecho" width="80" height="80">
+    </div>
+    <!-- Título principal -->
+    <h2 class="titulo-upea text-center mb-4">Buscador de Cajeros – UPEA</h2>
+
+    <!-- Contenedor mapa + buscador -->
+<div id="map-container">
+    <!-- Mapa -->
+    <div id="map"></div>
+
+        <!-- Buscador -->
+    <div class="panel-derecho">
+            
+            <div class="mb-3">
+                <label class="form-label fw-bold">Seleccionar Banco</label>
+                <select id="banco" class="form-select">
+                    <option value="todos">Todos</option>
+                    <option value="BCP">BCP</option>
+                    <option value="BNB">BNB</option>
+                    <option value="Union">Banco Unión</option>
+                    <option value="Económico">Banco Económico</option>
+                    <option value="FIE">Banco FIE</option>
+                </select>
+            </div>
+            <button class="btn btn-upea mb-3" onclick="enviar()">Buscar Cajeros Cercanos</button>
+            <div id="resultado"></div>
+        </div>
+    </div>
+
+    <!-- Información -->
+    <div class="card shadow-lg p-4 borde-upea-oscuro mt-5">
+        <h4 class="text-center mb-3">🎯 ¿Qué hace esta aplicación?</h4>
+        <ul>
+            <li>Obtiene tu ubicación mediante geolocalización.</li>
+            <li>Identifica los cajeros más cercanos de distintos bancos.</li>
+            <li>Aplica cálculo geoespacial con la fórmula Haversine.</li>
+            <li>Utiliza SQLite como base de datos local.</li>
+            <li>Permite visualizar las rutas en un mapa interactivo.</li>
+        </ul>
+
+        <h4 class="mt-4 mb-3 text-center">📌 ¿Cómo funciona el sistema?</h4>
+        <ul>
+            <li><b>Captura tu posición GPS</b> mediante el navegador.</li>
+            <li><b>Filtra</b> los cajeros por banco o muestra todos.</li>
+            <li><b>Calcula</b> la distancia entre tu ubicación y cada cajero registrado.</li>
+            <li><b>Ordena</b> los resultados del más cercano al más lejano.</li>
+            <li><b>Muestra</b> los cajeros con opción para verlos en un mapa interactivo.</li>
+        </ul>
+
+        <h4 class="mt-4 mb-3 text-center">🌍 Relevancia en SIG</h4>
+        <ul>
+            <li>Geolocalización en aplicaciones web.</li>
+            <li>Análisis espacial básico (distancias geodésicas).</li>
+            <li>Uso de coordenadas geográficas y proyecciones.</li>
+            <li>Integración de mapas digitales mediante Leaflet.</li>
+            <li>Gestión y almacenamiento de datos espaciales en SQLite.</li>
+        </ul>
+
+        <h4 class="mt-4 mb-3 text-center">🏙 Aplicación en la gestión urbana y territorial</h4>
+        <ul>
+            <li>Estudios de accesibilidad a servicios financieros.</li>
+            <li>Planificación urbana en zonas con alta demanda de cajeros.</li>
+            <li>Identificación de áreas sin cobertura bancaria.</li>
+            <li>Evaluación del comportamiento geográfico de los usuarios.</li>
+            <li>Optimización de rutas y movilidad en áreas congestionadas.</li>
+        </ul>
+
+        <h4 class="mt-4 mb-3 text-center">🎓 Objetivos Académicos</h4>
+        <ul>
+            <li>Aplique conceptos de SIG en un sistema funcional.</li>
+            <li>Comprenda el uso de datos espaciales y su análisis.</li>
+            <li>Diseñe interfaces que integren geolocalización real.</li>
+            <li>Utilice herramientas modernas como Leaflet y SQLite.</li>
+            <li>Combine teoría y práctica en un proyecto útil para la comunidad.</li>
+        </ul>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer-fijo">
+    <div class="container">
+        <p class="mb-0"><b>II/2025 – SIG – FFFG – UPEA</b></p>
+    </div>
+</footer>
+
+<!-- Scripts -->
+<script>
+let userLat = -16.5;
+let userLon = -68.15;
+let markers = [];
+let rutaLayer = null;
+let userMarker = null;
+let listaAtms = [];
+
+/* ================================
+   MAPA – CON ARREGLO DEL ICONO
+   ================================ */
+const map = L.map('map', {
+    zoomAnimation: true,
+    markerZoomAnimation: false   // 👈 evita que los iconos se achiquen o agranden al hacer zoom
+}).setView([userLat, userLon], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/">OSM</a>',
+    maxZoom: 19
+}).addTo(map);
+
+/* ================================
+   ICONO DE ATM (TAMAÑO FIJO)
+   ================================ */
+const atmIcon = L.icon({
+    iconUrl: '/static/atm_icon.png',
+    iconSize: [32, 37],
+    iconAnchor: [16, 37],
+    popupAnchor: [0, -30]
+});
+
+/* ================================
+   ACTUALIZAR UBICACIÓN
+   ================================ */
+function actualizarUbicacion(pos) {
+    userLat = pos.coords.latitude;
+    userLon = pos.coords.longitude;
+
+    if(!userMarker) {
+        userMarker = L.circleMarker([userLat, userLon], {
+            radius: 8,
+            color:'#000000ff',
+            fillColor:'#000000ff',
+            fillOpacity:1
+        }).bindPopup("Tu ubicación").addTo(map);
+    } else {
+        userMarker.setLatLng([userLat, userLon]);
+    }
+
+    map.setView([userLat, userLon], 15);
+
+    if(listaAtms.length > 0) {
+        recalcularDistancias();
+    }
+}
+
+/* ================================
+   RECALCULAR DISTANCIAS
+   ================================ */
+function recalcularDistancias() {
+    listaAtms.forEach(atm => {
+        atm.distancia = distancia(userLat, userLon, atm.lat, atm.lon);
+    });
+
+    listaAtms.sort((a,b) => a.distancia - b.distancia);
+
+    let html = `<h5 class="mt-3">Resultados:</h5>`;
+    listaAtms.slice(0,10).forEach(a => {
+        html += `
+        <div class="alert alert-secondary shadow-sm">
+            <b>${a.banco}</b><br>
+            Distancia: ${a.distancia.toFixed(2)} km<br>
+            <button class="btn btn-sm btn-upea mt-2" onclick="mostrarRuta(${a.lat}, ${a.lon})">Cómo llegar</button>
+        </div>`;
+    });
+    document.getElementById("resultado").innerHTML = html;
+
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+
+    listaAtms.forEach(atm => {
+        const marker = L.marker([atm.lat, atm.lon], {icon: atmIcon}).addTo(map);
+        marker.bindPopup(`<b>${atm.banco}</b><br>Dirección: ${atm.direccion}<br>Distancia: ${atm.distancia.toFixed(2)} km`);
+        markers.push(marker);
+    });
+}
+
+/* ================================
+   ENVIAR PETICIÓN AL SERVIDOR
+   ================================ */
+function enviar() {
+    const banco = document.getElementById("banco").value;
+
+    fetch("/buscar", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({lat: userLat, lon: userLon, banco})
+    })
+    .then(res => res.json())
+    .then(lista => {
+        listaAtms = lista;
+        recalcularDistancias();
+    });
+}
+
+/* ================================
+   MOSTRAR RUTA
+   ================================ */
+function mostrarRuta(latDest, lonDest) {
+    if(rutaLayer) map.removeControl(rutaLayer);
+
+    rutaLayer = L.Routing.control({
+        waypoints: [
+            L.latLng(userLat, userLon),
+            L.latLng(latDest, lonDest)
+        ],
+        routeWhileDragging: false,
+        showAlternatives: true,
+        lineOptions: { styles: [{ color: '#000', weight: 5 }] },
+        createMarker: () => null
+    }).addTo(map);
+
+    const bounds = L.latLngBounds([[userLat, userLon],[latDest, lonDest]]);
+    map.fitBounds(bounds, {padding: [50,50]});
+}
+
+/* ================================
+   FÓRMULA HAVERSINE
+   ================================ */
+function distancia(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+/* ================================
+   GEOLOCALIZACIÓN INICIAL
+   ================================ */
+if(navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        actualizarUbicacion,
+        err => alert("No se pudo obtener la ubicación. Habilita GPS o geolocalización."),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+} else {
+    alert("Tu navegador no soporta geolocalización.");
+}
+</script>
