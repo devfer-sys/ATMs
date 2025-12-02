@@ -34,6 +34,12 @@
 
         <!-- Buscador -->
     <div class="panel-derecho">
+
+            <!-- 🔵 NUEVO: Dirección exacta del usuario -->
+            <div class="alert alert-info">
+                <b>📍 Tu ubicación actual:</b><br>
+                <span id="mi-direccion">Detectando...</span>
+            </div>
             
             <div class="mb-3">
                 <label class="form-label fw-bold">Seleccionar Banco</label>
@@ -50,6 +56,7 @@
             <div id="resultado"></div>
         </div>
     </div>
+
 
     <!-- Información -->
     <div class="card shadow-lg p-4 borde-upea-oscuro mt-5">
@@ -117,11 +124,11 @@ let userMarker = null;
 let listaAtms = [];
 
 /* ================================
-   MAPA – CON ARREGLO DEL ICONO
+   MAPA – ICONO FIJO
    ================================ */
 const map = L.map('map', {
     zoomAnimation: true,
-    markerZoomAnimation: false   // 👈 evita que los iconos se achiquen o agranden al hacer zoom
+    markerZoomAnimation: false
 }).setView([userLat, userLon], 13);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -129,9 +136,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19
 }).addTo(map);
 
-/* ================================
-   ICONO DE ATM (TAMAÑO FIJO)
-   ================================ */
 const atmIcon = L.icon({
     iconUrl: '/static/atm_icon.png',
     iconSize: [32, 37],
@@ -140,7 +144,25 @@ const atmIcon = L.icon({
 });
 
 /* ================================
-   ACTUALIZAR UBICACIÓN
+   🔵 FUNCIÓN NEW: Obtener dirección de usuario
+   ================================ */
+async function obtenerDireccion(lat, lon) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+
+    try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        document.getElementById("mi-direccion").textContent =
+            data.display_name ?? "No se pudo obtener dirección";
+    } catch (e) {
+        document.getElementById("mi-direccion").textContent =
+            "Error al obtener la dirección";
+    }
+}
+
+/* ================================
+   ACTUALIZAR UBICACIÓN + DIRECCIÓN
    ================================ */
 function actualizarUbicacion(pos) {
     userLat = pos.coords.latitude;
@@ -157,7 +179,11 @@ function actualizarUbicacion(pos) {
         userMarker.setLatLng([userLat, userLon]);
     }
 
+    // MOVEMOS MAPA
     map.setView([userLat, userLon], 15);
+
+    // 🔵 NUEVO: Obtener dirección real
+    obtenerDireccion(userLat, userLon);
 
     if(listaAtms.length > 0) {
         recalcularDistancias();
@@ -196,7 +222,7 @@ function recalcularDistancias() {
 }
 
 /* ================================
-   ENVIAR PETICIÓN AL SERVIDOR
+   ENVIAR PETICIÓN
    ================================ */
 function enviar() {
     const banco = document.getElementById("banco").value;
@@ -214,7 +240,7 @@ function enviar() {
 }
 
 /* ================================
-   MOSTRAR RUTA
+   MOSTRAR RUTA EN MAPA
    ================================ */
 function mostrarRuta(latDest, lonDest) {
     if(rutaLayer) map.removeControl(rutaLayer);
@@ -235,7 +261,7 @@ function mostrarRuta(latDest, lonDest) {
 }
 
 /* ================================
-   FÓRMULA HAVERSINE
+   DISTANCIA HAVERSINE
    ================================ */
 function distancia(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -246,12 +272,16 @@ function distancia(lat1, lon1, lat2, lon2) {
 }
 
 /* ================================
-   GEOLOCALIZACIÓN INICIAL
+   GEOLOCALIZACIÓN
    ================================ */
 if(navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
         actualizarUbicacion,
-        err => alert("No se pudo obtener la ubicación. Habilita GPS o geolocalización."),
+        err => {
+            document.getElementById("mi-direccion").textContent =
+                "No se pudo obtener la ubicación.";
+            alert("Habilita el GPS o la geolocalización del navegador.");
+        },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 } else {
